@@ -1,0 +1,94 @@
+---
+title: "Practical Machine Learning Course Project"
+output: html_notebook
+---
+## Load libraries
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+```
+
+## Load training data
+```{r}
+rawData <- read.csv("pml-training.csv")
+
+dim(rawData)
+
+sum(complete.cases(rawData))
+```
+We can see, that there are nearly no cases without N/A values.
+We remove columns containing N/A values:
+```{r}
+rawData <- rawData[, colSums(is.na(rawData)) == 0]
+sum(complete.cases(rawData))
+```
+We remove "X" column and any other containing timestamp or window in it's name:
+```{r}
+classe <- rawData$classe
+bad_columns <- grepl("^X$|timestamp|window", names(rawData))
+dataset <- rawData[, !bad_columns]
+dataset <- dataset[, sapply(dataset, is.numeric)]
+dataset$classe <- classe
+
+dim(dataset)
+```
+We see that there are 19622 samples and 53 variables (including the target).
+
+## Split dataset into train and test.
+
+```{r}
+set.seed(100)
+trainPartition<-createDataPartition(dataset$classe, p=0.70, list=F)
+trainData <- dataset[trainPartition,]
+testData <- dataset[-trainPartition,]
+
+dim(trainData)
+dim(testData)
+```
+
+## Model creation
+We create a random forest model of 220 trees and train it using 10-fold cross validation.
+```{r}
+control <- trainControl(method="cv", 10)
+model <- train(classe ~., data=trainData, method="rf", ntree=220,trControl=control)
+model
+```
+Estimate the performance of the model on validation set.
+```{r}
+predictionRf <- predict(model, testData)
+confMat <- confusionMatrix(as.factor(testData$classe), predictionRf)
+
+length(predictionRf)
+length(testData$classe)
+accuracy <- postResample(predictionRf, as.factor(testData$classe))
+accuracy
+outOfSampleError <- 1 - as.numeric(confMat$overall[1])
+outOfSampleError
+```
+We can see, that the accuracy is 99% and out of sample error 0.7%
+
+## Run model on provided testing data
+Prepare the data in the same manner as we have prepared training data before
+```{r}
+testing <- read.csv("pml-testing.csv")
+
+testing <- testing[, colSums(is.na(testing)) == 0]
+
+bad_columns <- grepl("^X|timestamp|window", names(testing))
+testing <- testing[, !bad_columns]
+testing <- testing[, sapply(testing, is.numeric)]
+
+dim(testing)
+```
+We have 20 samples with 44 variables without the ```classe``` variable we want to predict
+```{r}
+result <- predict(model, testing)
+print(result)
+```
+## Appendix: Figures
+```{r}
+treeGraph <- rpart(classe ~., data=trainData, method="class")
+prp(treeGraph)
+```
